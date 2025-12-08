@@ -1,0 +1,41 @@
+# Snail Shell Server Configuration
+# Copy to config.yaml and modify as needed
+
+server:
+  # Address to listen on
+  listen: ":8080"
+  
+  # Request timeouts (seconds)
+  read_timeout: 60
+  write_timeout: 60
+  idle_timeout: 120
+  
+  # TLS configuration (optional)
+  # tls_cert: /path/to/cert.pem
+  # tls_key: /path/to/key.pem
+
+auth:
+  # Enable API key authentication
+  enabled: false
+  
+  # Allow all requests without authentication (for development)
+  allow_all: true
+  
+  # Valid API keys (add your keys here when auth is enabled)
+  api_keys:
+    # - your-secret-api-key-1
+    # - your-secret-api-key-2
+
+storage:
+  # Storage backend type: "file" (more options coming)
+  type: file
+  
+  # Path to store report files
+  path: ./data/reports
+  
+  # Maximum number of reports to keep (0 = unlimited)
+  max_reports: 1000
+  
+  # Report retention period (not yet implemented)
+  retention: "30d"
+
