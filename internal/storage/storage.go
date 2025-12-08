@@ -3,8 +3,8 @@ package storage
 import (
 	"errors"
 
-	"github.com/stillness/snail-shell/internal/config"
-	"github.com/stillness/snail-shell/internal/models"
+	"github.com/sluggisty/snail-shell/internal/config"
+	"github.com/sluggisty/snail-shell/internal/models"
 )
 
 // Common errors
@@ -46,4 +46,3 @@ func New(cfg config.StorageConfig) (Storage, error) {
 		return NewFileStorage(cfg.Path, cfg.MaxReports)
 	}
 }
-

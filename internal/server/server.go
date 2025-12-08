@@ -3,9 +3,9 @@ package server
 import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/stillness/snail-shell/internal/config"
-	"github.com/stillness/snail-shell/internal/handlers"
-	"github.com/stillness/snail-shell/internal/storage"
+	"github.com/sluggisty/snail-shell/internal/config"
+	"github.com/sluggisty/snail-shell/internal/handlers"
+	"github.com/sluggisty/snail-shell/internal/storage"
 )
 
 // Server represents the HTTP server
@@ -70,4 +70,3 @@ func (s *Server) setupRoutes() {
 
 	s.router = r
 }
-

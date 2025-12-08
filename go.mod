@@ -1,4 +1,4 @@
-module github.com/stillness/snail-shell
+module github.com/sluggisty/snail-shell
 
 go 1.21
 

@@ -11,8 +11,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
-	"github.com/stillness/snail-shell/internal/models"
-	"github.com/stillness/snail-shell/internal/storage"
+	"github.com/sluggisty/snail-shell/internal/models"
+	"github.com/sluggisty/snail-shell/internal/storage"
 )
 
 // Handlers contains HTTP handlers
@@ -38,8 +38,8 @@ func (h *Handlers) Health(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) Info(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"name":    "snail-shell",
-		"version": "0.1.0",
+		"name":        "snail-shell",
+		"version":     "0.1.0",
 		"description": "Backend service for snail-core system reports",
 		"endpoints": map[string]string{
 			"health":  "GET /health",
@@ -264,4 +264,3 @@ func (h *Handlers) GetHostReports(w http.ResponseWriter, r *http.Request) {
 		"total":    total,
 	})
 }
-

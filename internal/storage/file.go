@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
-	"github.com/stillness/snail-shell/internal/models"
+	"github.com/sluggisty/snail-shell/internal/models"
 )
 
 // FileStorage implements Storage using the filesystem
@@ -19,8 +19,8 @@ type FileStorage struct {
 	mu         sync.RWMutex
 
 	// In-memory index for fast lookups
-	reports    map[string]*models.Report
-	hostIndex  map[string][]string // hostname -> report IDs
+	reports   map[string]*models.Report
+	hostIndex map[string][]string // hostname -> report IDs
 }
 
 // NewFileStorage creates a new file-based storage
@@ -307,4 +307,3 @@ func (fs *FileStorage) Close() error {
 	// Nothing to close for file storage
 	return nil
 }
-

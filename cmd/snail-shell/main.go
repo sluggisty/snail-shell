@@ -12,9 +12,9 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/stillness/snail-shell/internal/config"
-	"github.com/stillness/snail-shell/internal/server"
-	"github.com/stillness/snail-shell/internal/storage"
+	"github.com/sluggisty/snail-shell/internal/config"
+	"github.com/sluggisty/snail-shell/internal/server"
+	"github.com/sluggisty/snail-shell/internal/storage"
 )
 
 func main() {
@@ -92,4 +92,3 @@ func main() {
 
 	fmt.Println("Server stopped")
 }
-
