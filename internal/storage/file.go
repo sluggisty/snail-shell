@@ -250,6 +250,8 @@ func (fs *FileStorage) ListHosts() ([]*models.HostSummary, error) {
 			ReportCount: len(ids),
 		}
 
+		var latestReport *models.Report
+
 		// Find first/last seen and latest report
 		for _, id := range ids {
 			report := fs.reports[id]
@@ -259,7 +261,13 @@ func (fs *FileStorage) ListHosts() ([]*models.HostSummary, error) {
 			if report.ReceivedAt.After(summary.LastSeen) {
 				summary.LastSeen = report.ReceivedAt
 				summary.LatestReport = report.ID
+				latestReport = report
 			}
+		}
+
+		// Add vulnerability summary from latest report
+		if latestReport != nil {
+			summary.LatestVulnerabilitySummary = latestReport.GetVulnerabilitySummary()
 		}
 
 		hosts = append(hosts, summary)
@@ -288,6 +296,8 @@ func (fs *FileStorage) GetHost(hostname string) (*models.HostSummary, error) {
 		ReportCount: len(ids),
 	}
 
+	var latestReport *models.Report
+
 	for _, id := range ids {
 		report := fs.reports[id]
 		if summary.FirstSeen.IsZero() || report.ReceivedAt.Before(summary.FirstSeen) {
@@ -296,7 +306,13 @@ func (fs *FileStorage) GetHost(hostname string) (*models.HostSummary, error) {
 		if report.ReceivedAt.After(summary.LastSeen) {
 			summary.LastSeen = report.ReceivedAt
 			summary.LatestReport = report.ID
+			latestReport = report
 		}
+	}
+
+	// Add vulnerability summary from latest report
+	if latestReport != nil {
+		summary.LatestVulnerabilitySummary = latestReport.GetVulnerabilitySummary()
 	}
 
 	return summary, nil
