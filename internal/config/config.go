@@ -31,11 +31,9 @@ type AuthConfig struct {
 	AllowAll bool     `yaml:"allow_all"` // For development/testing
 }
 
-// StorageConfig holds data storage settings
+// StorageConfig holds PostgreSQL storage settings
 type StorageConfig struct {
-	Type       string `yaml:"type"` // "file", "sqlite", "postgres"
-	Path       string `yaml:"path"` // For file/sqlite storage
-	DSN        string `yaml:"dsn"`  // For postgres
+	DSN        string `yaml:"dsn"` // PostgreSQL connection string
 	MaxReports int    `yaml:"max_reports"`
 	Retention  string `yaml:"retention"` // e.g., "30d", "1w"
 }
@@ -54,8 +52,6 @@ func Default() *Config {
 			AllowAll: true,
 		},
 		Storage: StorageConfig{
-			Type:       "file",
-			Path:       "./data/reports",
 			MaxReports: 1000,
 			Retention:  "30d",
 		},
@@ -117,15 +113,7 @@ func (c *Config) applyEnvOverrides() {
 		c.Auth.AllowAll = false
 		c.Auth.APIKeys = append(c.Auth.APIKeys, v)
 	}
-	if v := os.Getenv("SNAIL_STORAGE_PATH"); v != "" {
-		c.Storage.Path = v
-	}
-	if v := os.Getenv("SNAIL_STORAGE_TYPE"); v != "" {
-		c.Storage.Type = v
-	}
 	if v := os.Getenv("DATABASE_URL"); v != "" {
 		c.Storage.DSN = v
-		c.Storage.Type = "postgres"
 	}
 }
-

@@ -1,0 +1,36 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Build artifacts
+bin/
+dist/
+*.exe
+
+# Local data (don't include in image)
+data/
+*.json
+
+# Documentation
+*.md
+docs/
+LICENSE
+
+# Docker files (don't need to copy these into the build context)
+docker-compose*.yml
+Dockerfile*
+
+# Config examples (use environment variables instead)
+config.yaml
+config.yaml.example
+
+# Test files
+*_test.go
+testdata/
+
