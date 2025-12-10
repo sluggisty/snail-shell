@@ -40,6 +40,8 @@ type Storage interface {
 // New creates a new storage instance based on configuration
 func New(cfg config.StorageConfig) (Storage, error) {
 	switch cfg.Type {
+	case "postgres":
+		return NewPostgresStorage(cfg.DSN, cfg.MaxReports)
 	case "file", "":
 		return NewFileStorage(cfg.Path, cfg.MaxReports)
 	default:

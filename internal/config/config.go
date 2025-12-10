@@ -120,5 +120,12 @@ func (c *Config) applyEnvOverrides() {
 	if v := os.Getenv("SNAIL_STORAGE_PATH"); v != "" {
 		c.Storage.Path = v
 	}
+	if v := os.Getenv("SNAIL_STORAGE_TYPE"); v != "" {
+		c.Storage.Type = v
+	}
+	if v := os.Getenv("DATABASE_URL"); v != "" {
+		c.Storage.DSN = v
+		c.Storage.Type = "postgres"
+	}
 }
 

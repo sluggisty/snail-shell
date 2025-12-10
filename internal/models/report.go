@@ -39,13 +39,13 @@ type IngestResponse struct {
 
 // ReportSummary is a compact version for listing
 type ReportSummary struct {
-	ID                    string                `json:"id"`
-	Hostname              string                `json:"hostname"`
-	CollectionID          string                `json:"collection_id"`
-	Timestamp             string                `json:"timestamp"`
-	ReceivedAt            time.Time             `json:"received_at"`
-	HasErrors             bool                  `json:"has_errors"`
-	VulnerabilitySummary  *VulnerabilitySummary `json:"vulnerability_summary,omitempty"`
+	ID                   string                `json:"id"`
+	Hostname             string                `json:"hostname"`
+	CollectionID         string                `json:"collection_id"`
+	Timestamp            string                `json:"timestamp"`
+	ReceivedAt           time.Time             `json:"received_at"`
+	HasErrors            bool                  `json:"has_errors"`
+	VulnerabilitySummary *VulnerabilitySummary `json:"vulnerability_summary,omitempty"`
 }
 
 // HostSummary represents aggregated info about a host
@@ -171,4 +171,3 @@ func (r *Report) GetVulnerabilitySummary() *VulnerabilitySummary {
 	}
 	return &vulnData.Summary
 }
-
