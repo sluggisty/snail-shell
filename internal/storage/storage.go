@@ -2,6 +2,7 @@ package storage
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/sluggisty/snail-shell/internal/config"
 	"github.com/sluggisty/snail-shell/internal/models"
@@ -37,14 +38,10 @@ type Storage interface {
 	Close() error
 }
 
-// New creates a new storage instance based on configuration
+// New creates a new PostgreSQL storage instance
 func New(cfg config.StorageConfig) (Storage, error) {
-	switch cfg.Type {
-	case "postgres":
-		return NewPostgresStorage(cfg.DSN, cfg.MaxReports)
-	case "file", "":
-		return NewFileStorage(cfg.Path, cfg.MaxReports)
-	default:
-		return NewFileStorage(cfg.Path, cfg.MaxReports)
+	if cfg.DSN == "" {
+		return nil, fmt.Errorf("DATABASE_URL or storage.dsn is required")
 	}
+	return NewPostgresStorage(cfg.DSN, cfg.MaxReports)
 }

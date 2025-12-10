@@ -1,0 +1,56 @@
+services:
+  snail-shell:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: snail-shell
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=postgres://snail:snail_secret@postgres:5432/snailshell?sslmode=disable
+      - SNAIL_LISTEN=:8080
+      # Uncomment to enable API key authentication
+      # - SNAIL_API_KEY=your-secret-api-key
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - snail-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: snail-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: snail
+      POSTGRES_PASSWORD: snail_secret
+      POSTGRES_DB: snailshell
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U snail -d snailshell"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - snail-network
+    # Uncomment to expose postgres port for debugging
+    # ports:
+    #   - "5432:5432"
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  snail-network:
+    driver: bridge
+

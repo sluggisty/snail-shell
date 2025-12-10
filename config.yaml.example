@@ -27,19 +27,12 @@ auth:
     # - your-secret-api-key-2
 
 storage:
-  # Storage backend type: "file" or "postgres"
-  type: file
-  
-  # Path to store report files (for file storage)
-  path: ./data/reports
-
-  # PostgreSQL connection string (for postgres storage)
+  # PostgreSQL connection string (required)
   # Can also be set via DATABASE_URL environment variable
-  # dsn: "postgres://user:password@localhost:5432/snailshell?sslmode=disable"
+  dsn: "postgres://user:password@localhost:5432/snailshell?sslmode=disable"
   
   # Maximum number of reports to keep (0 = unlimited)
   max_reports: 1000
   
   # Report retention period (not yet implemented)
   retention: "30d"
-
