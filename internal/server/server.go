@@ -69,6 +69,7 @@ func (s *Server) setupRoutes() {
 
 		// Aggregation endpoints
 		r.Get("/vulnerabilities", h.GetVulnerabilities)
+		r.Get("/compliance", h.GetCompliance)
 	})
 
 	s.router = r

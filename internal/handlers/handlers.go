@@ -434,3 +434,156 @@ func truncateString(s string, maxLen int) string {
 	}
 	return s[:maxLen-3] + "..."
 }
+
+// GetCompliance returns aggregated compliance policy data across all hosts
+func (h *Handlers) GetCompliance(w http.ResponseWriter, r *http.Request) {
+	// Get latest report per host
+	reports, err := h.storage.GetLatestReportPerHost()
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get latest reports")
+		http.Error(w, `{"error": "failed to retrieve reports"}`, http.StatusInternalServerError)
+		return
+	}
+
+	// Aggregate compliance across all reports
+	aggregation := h.aggregateCompliance(reports)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(aggregation)
+}
+
+func (h *Handlers) aggregateCompliance(reports []*models.Report) *models.ComplianceAggregation {
+	result := &models.ComplianceAggregation{
+		TotalHosts:  len(reports),
+		GeneratedAt: time.Now().UTC(),
+		Policies:    []models.AggregatedPolicy{},
+	}
+
+	// Map to aggregate policies: profile_id -> aggregated data
+	policyMap := make(map[string]*models.AggregatedPolicy)
+	// Track hosts with compliance
+	hostsWithCompliance := make(map[string]bool)
+
+	for _, report := range reports {
+		compData, err := report.ParseComplianceData()
+		if err != nil || compData == nil || !compData.ScanCompleted {
+			continue
+		}
+
+		hostname := report.Meta.Hostname
+		hostsWithCompliance[hostname] = true
+
+		// Get profile ID
+		profileID := ""
+		profileName := ""
+		if compData.ProfileInfo != nil {
+			profileID = compData.ProfileInfo.ID
+			profileName = compData.ProfileInfo.Name
+		}
+		if profileID == "" {
+			profileID = "unknown"
+			profileName = "Unknown Profile"
+		}
+
+		// Create host result
+		hostResult := models.HostComplianceResult{
+			Hostname:    hostname,
+			FailedRules: []models.ComplianceRule{},
+		}
+
+		if compData.Summary != nil {
+			hostResult.Score = compData.Summary.Score
+			hostResult.PassCount = compData.Summary.Pass
+			hostResult.FailCount = compData.Summary.Fail
+			hostResult.ErrorCount = compData.Summary.Error
+			hostResult.TotalRules = compData.Summary.TotalRules
+		}
+
+		if compData.ScanTime != nil {
+			hostResult.ScanTime = compData.ScanTime.End
+		}
+
+		// Collect failed rules (limit to top 20)
+		failedCount := 0
+		for _, rule := range compData.Rules {
+			if rule.Status == "fail" || rule.Status == "error" {
+				hostResult.FailedRules = append(hostResult.FailedRules, rule)
+				failedCount++
+				if failedCount >= 20 {
+					break
+				}
+			}
+		}
+
+		// Add to or update policy map
+		if existing, ok := policyMap[profileID]; ok {
+			existing.HostCount++
+			existing.HostResults = append(existing.HostResults, hostResult)
+			// Recalculate average score
+			totalScore := 0.0
+			for _, hr := range existing.HostResults {
+				totalScore += hr.Score
+			}
+			existing.AverageScore = totalScore / float64(len(existing.HostResults))
+			
+			// Update pass/fail counts
+			if hostResult.Score >= 100 {
+				existing.TotalPassing++
+			} else {
+				existing.TotalFailing++
+			}
+		} else {
+			passing := 0
+			failing := 0
+			if hostResult.Score >= 100 {
+				passing = 1
+			} else {
+				failing = 1
+			}
+
+			policyMap[profileID] = &models.AggregatedPolicy{
+				ProfileID:    profileID,
+				ProfileName:  profileName,
+				ContentFile:  compData.ContentFile,
+				HostCount:    1,
+				AverageScore: hostResult.Score,
+				TotalPassing: passing,
+				TotalFailing: failing,
+				HostResults:  []models.HostComplianceResult{hostResult},
+			}
+		}
+	}
+
+	// Convert map to slice
+	policies := make([]models.AggregatedPolicy, 0, len(policyMap))
+	for _, policy := range policyMap {
+		// Sort host results by score (lowest first - worst compliance)
+		sortHostResultsByScore(policy.HostResults)
+		policies = append(policies, *policy)
+	}
+
+	// Sort policies by host count (most common first)
+	for i := 0; i < len(policies)-1; i++ {
+		for j := i + 1; j < len(policies); j++ {
+			if policies[i].HostCount < policies[j].HostCount {
+				policies[i], policies[j] = policies[j], policies[i]
+			}
+		}
+	}
+
+	result.HostsWithCompliance = len(hostsWithCompliance)
+	result.TotalPolicies = len(policies)
+	result.Policies = policies
+
+	return result
+}
+
+func sortHostResultsByScore(results []models.HostComplianceResult) {
+	for i := 0; i < len(results)-1; i++ {
+		for j := i + 1; j < len(results); j++ {
+			if results[i].Score > results[j].Score {
+				results[i], results[j] = results[j], results[i]
+			}
+		}
+	}
+}
