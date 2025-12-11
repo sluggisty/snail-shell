@@ -13,12 +13,11 @@ import (
 
 // PostgresStorage implements Storage using PostgreSQL
 type PostgresStorage struct {
-	db         *sql.DB
-	maxReports int
+	db *sql.DB
 }
 
 // NewPostgresStorage creates a new PostgreSQL-backed storage
-func NewPostgresStorage(dsn string, maxReports int) (*PostgresStorage, error) {
+func NewPostgresStorage(dsn string) (*PostgresStorage, error) {
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
@@ -35,8 +34,7 @@ func NewPostgresStorage(dsn string, maxReports int) (*PostgresStorage, error) {
 	db.SetConnMaxLifetime(5 * time.Minute)
 
 	ps := &PostgresStorage{
-		db:         db,
-		maxReports: maxReports,
+		db: db,
 	}
 
 	// Initialize schema
@@ -50,11 +48,12 @@ func NewPostgresStorage(dsn string, maxReports int) (*PostgresStorage, error) {
 }
 
 func (ps *PostgresStorage) initSchema() error {
+	// Migrate: drop old table if it uses id as primary key, create new one with hostname as primary key
 	schema := `
-	CREATE TABLE IF NOT EXISTS reports (
-		id TEXT PRIMARY KEY,
+	-- Create hosts table with hostname as primary key (one report per host)
+	CREATE TABLE IF NOT EXISTS hosts (
+		hostname TEXT PRIMARY KEY,
 		received_at TIMESTAMPTZ NOT NULL,
-		hostname TEXT NOT NULL,
 		collection_id TEXT,
 		timestamp TEXT,
 		snail_version TEXT,
@@ -62,23 +61,20 @@ func (ps *PostgresStorage) initSchema() error {
 		errors TEXT[]
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_reports_hostname ON reports(hostname);
-	CREATE INDEX IF NOT EXISTS idx_reports_received_at ON reports(received_at DESC);
-	CREATE INDEX IF NOT EXISTS idx_reports_hostname_received ON reports(hostname, received_at DESC);
+	CREATE INDEX IF NOT EXISTS idx_hosts_received_at ON hosts(received_at DESC);
 	`
 
 	_, err := ps.db.Exec(schema)
 	return err
 }
 
-// SaveReport stores a new report
-func (ps *PostgresStorage) SaveReport(report *models.Report) error {
+// SaveHost stores or updates a host's report (replaces any previous report)
+func (ps *PostgresStorage) SaveHost(report *models.Report) error {
 	query := `
-		INSERT INTO reports (id, received_at, hostname, collection_id, timestamp, snail_version, data, errors)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		ON CONFLICT (id) DO UPDATE SET
+		INSERT INTO hosts (hostname, received_at, collection_id, timestamp, snail_version, data, errors)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (hostname) DO UPDATE SET
 			received_at = EXCLUDED.received_at,
-			hostname = EXCLUDED.hostname,
 			collection_id = EXCLUDED.collection_id,
 			timestamp = EXCLUDED.timestamp,
 			snail_version = EXCLUDED.snail_version,
@@ -92,9 +88,8 @@ func (ps *PostgresStorage) SaveReport(report *models.Report) error {
 	}
 
 	_, err := ps.db.Exec(query,
-		report.ID,
-		report.ReceivedAt,
 		report.Meta.Hostname,
+		report.ReceivedAt,
 		report.Meta.CollectionID,
 		report.Meta.Timestamp,
 		report.Meta.SnailVersion,
@@ -103,58 +98,26 @@ func (ps *PostgresStorage) SaveReport(report *models.Report) error {
 	)
 
 	if err != nil {
-		return fmt.Errorf("failed to save report: %w", err)
-	}
-
-	// Enforce max reports limit
-	if ps.maxReports > 0 {
-		ps.enforceLimit()
+		return fmt.Errorf("failed to save host: %w", err)
 	}
 
 	return nil
 }
 
-func (ps *PostgresStorage) enforceLimit() {
-	if ps.maxReports <= 0 {
-		return
-	}
-
-	// Delete oldest reports beyond the limit
+// GetHost returns the full report data for a specific host
+func (ps *PostgresStorage) GetHost(hostname string) (*models.Report, error) {
 	query := `
-		DELETE FROM reports
-		WHERE id IN (
-			SELECT id FROM reports
-			ORDER BY received_at DESC
-			OFFSET $1
-		)
-	`
-
-	result, err := ps.db.Exec(query, ps.maxReports)
-	if err != nil {
-		log.Warn().Err(err).Msg("Failed to enforce report limit")
-		return
-	}
-
-	if rows, _ := result.RowsAffected(); rows > 0 {
-		log.Debug().Int64("removed", rows).Msg("Enforced report limit")
-	}
-}
-
-// GetReport retrieves a report by ID
-func (ps *PostgresStorage) GetReport(id string) (*models.Report, error) {
-	query := `
-		SELECT id, received_at, hostname, collection_id, timestamp, snail_version, data, errors
-		FROM reports
-		WHERE id = $1
+		SELECT hostname, received_at, collection_id, timestamp, snail_version, data, errors
+		FROM hosts
+		WHERE hostname = $1
 	`
 
 	report := &models.Report{}
 	var errors []string
 
-	err := ps.db.QueryRow(query, id).Scan(
-		&report.ID,
-		&report.ReceivedAt,
+	err := ps.db.QueryRow(query, hostname).Scan(
 		&report.Meta.Hostname,
+		&report.ReceivedAt,
 		&report.Meta.CollectionID,
 		&report.Meta.Timestamp,
 		&report.Meta.SnailVersion,
@@ -166,18 +129,19 @@ func (ps *PostgresStorage) GetReport(id string) (*models.Report, error) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to get report: %w", err)
+		return nil, fmt.Errorf("failed to get host: %w", err)
 	}
 
+	report.ID = hostname // Use hostname as ID
 	report.Errors = errors
 	return report, nil
 }
 
-// DeleteReport removes a report by ID
-func (ps *PostgresStorage) DeleteReport(id string) error {
-	result, err := ps.db.Exec("DELETE FROM reports WHERE id = $1", id)
+// DeleteHost removes a host
+func (ps *PostgresStorage) DeleteHost(hostname string) error {
+	result, err := ps.db.Exec("DELETE FROM hosts WHERE hostname = $1", hostname)
 	if err != nil {
-		return fmt.Errorf("failed to delete report: %w", err)
+		return fmt.Errorf("failed to delete host: %w", err)
 	}
 
 	rows, _ := result.RowsAffected()
@@ -188,86 +152,12 @@ func (ps *PostgresStorage) DeleteReport(id string) error {
 	return nil
 }
 
-// ListReports returns reports with pagination
-func (ps *PostgresStorage) ListReports(hostname string, limit, offset int) ([]*models.Report, int, error) {
-	var total int
-	var reports []*models.Report
-
-	// Get total count
-	countQuery := "SELECT COUNT(*) FROM reports"
-	countArgs := []interface{}{}
-
-	if hostname != "" {
-		countQuery += " WHERE hostname = $1"
-		countArgs = append(countArgs, hostname)
-	}
-
-	if err := ps.db.QueryRow(countQuery, countArgs...).Scan(&total); err != nil {
-		return nil, 0, fmt.Errorf("failed to count reports: %w", err)
-	}
-
-	// Get reports
-	query := `
-		SELECT id, received_at, hostname, collection_id, timestamp, snail_version, data, errors
-		FROM reports
-	`
-	args := []interface{}{}
-
-	if hostname != "" {
-		query += " WHERE hostname = $1"
-		args = append(args, hostname)
-	}
-
-	query += " ORDER BY received_at DESC LIMIT $%d OFFSET $%d"
-	if hostname != "" {
-		query = fmt.Sprintf(query[:len(query)-24]+" ORDER BY received_at DESC LIMIT $2 OFFSET $3", 2, 3)
-		args = append(args, limit, offset)
-	} else {
-		query = "SELECT id, received_at, hostname, collection_id, timestamp, snail_version, data, errors FROM reports ORDER BY received_at DESC LIMIT $1 OFFSET $2"
-		args = append(args, limit, offset)
-	}
-
-	rows, err := ps.db.Query(query, args...)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to list reports: %w", err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		report := &models.Report{}
-		var errors []string
-
-		if err := rows.Scan(
-			&report.ID,
-			&report.ReceivedAt,
-			&report.Meta.Hostname,
-			&report.Meta.CollectionID,
-			&report.Meta.Timestamp,
-			&report.Meta.SnailVersion,
-			&report.Data,
-			pq.Array(&errors),
-		); err != nil {
-			return nil, 0, fmt.Errorf("failed to scan report: %w", err)
-		}
-
-		report.Errors = errors
-		reports = append(reports, report)
-	}
-
-	return reports, total, nil
-}
-
-// ListHosts returns all known hosts with their summaries
+// ListHosts returns all hosts with summary info
 func (ps *PostgresStorage) ListHosts() ([]*models.HostSummary, error) {
 	query := `
-		SELECT 
-			hostname,
-			COUNT(*) as report_count,
-			MIN(received_at) as first_seen,
-			MAX(received_at) as last_seen
-		FROM reports
-		GROUP BY hostname
-		ORDER BY last_seen DESC
+		SELECT hostname, received_at, data
+		FROM hosts
+		ORDER BY received_at DESC
 	`
 
 	rows, err := ps.db.Query(query)
@@ -279,32 +169,22 @@ func (ps *PostgresStorage) ListHosts() ([]*models.HostSummary, error) {
 	var hosts []*models.HostSummary
 
 	for rows.Next() {
-		host := &models.HostSummary{}
-		if err := rows.Scan(
-			&host.Hostname,
-			&host.ReportCount,
-			&host.FirstSeen,
-			&host.LastSeen,
-		); err != nil {
+		var hostname string
+		var receivedAt time.Time
+		var data json.RawMessage
+
+		if err := rows.Scan(&hostname, &receivedAt, &data); err != nil {
 			return nil, fmt.Errorf("failed to scan host: %w", err)
 		}
 
-		// Get latest report ID and vulnerability summary
-		latestQuery := `
-			SELECT id, data 
-			FROM reports 
-			WHERE hostname = $1 
-			ORDER BY received_at DESC 
-			LIMIT 1
-		`
-		var latestID string
-		var data json.RawMessage
-		if err := ps.db.QueryRow(latestQuery, host.Hostname).Scan(&latestID, &data); err == nil {
-			host.LatestReport = latestID
-
-			// Parse vulnerability summary from data
-			host.LatestVulnerabilitySummary = extractVulnerabilitySummary(data)
+		host := &models.HostSummary{
+			Hostname: hostname,
+			LastSeen: receivedAt,
 		}
+
+		// Parse vulnerability and compliance summaries from data
+		host.LatestVulnerabilitySummary = extractVulnerabilitySummary(data)
+		host.LatestComplianceSummary = extractComplianceSummary(data)
 
 		hosts = append(hosts, host)
 	}
@@ -312,64 +192,17 @@ func (ps *PostgresStorage) ListHosts() ([]*models.HostSummary, error) {
 	return hosts, nil
 }
 
-// GetHost returns summary for a specific host
-func (ps *PostgresStorage) GetHost(hostname string) (*models.HostSummary, error) {
+// GetAllHosts returns all hosts with their full report data
+func (ps *PostgresStorage) GetAllHosts() ([]*models.Report, error) {
 	query := `
-		SELECT 
-			hostname,
-			COUNT(*) as report_count,
-			MIN(received_at) as first_seen,
-			MAX(received_at) as last_seen
-		FROM reports
-		WHERE hostname = $1
-		GROUP BY hostname
-	`
-
-	host := &models.HostSummary{}
-	err := ps.db.QueryRow(query, hostname).Scan(
-		&host.Hostname,
-		&host.ReportCount,
-		&host.FirstSeen,
-		&host.LastSeen,
-	)
-
-	if err == sql.ErrNoRows {
-		return nil, ErrNotFound
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to get host: %w", err)
-	}
-
-	// Get latest report ID and vulnerability summary
-	latestQuery := `
-		SELECT id, data 
-		FROM reports 
-		WHERE hostname = $1 
-		ORDER BY received_at DESC 
-		LIMIT 1
-	`
-	var latestID string
-	var data json.RawMessage
-	if err := ps.db.QueryRow(latestQuery, hostname).Scan(&latestID, &data); err == nil {
-		host.LatestReport = latestID
-		host.LatestVulnerabilitySummary = extractVulnerabilitySummary(data)
-	}
-
-	return host, nil
-}
-
-// GetLatestReportPerHost returns the most recent report for each host
-func (ps *PostgresStorage) GetLatestReportPerHost() ([]*models.Report, error) {
-	query := `
-		SELECT DISTINCT ON (hostname) 
-			id, received_at, hostname, collection_id, timestamp, snail_version, data, errors
-		FROM reports
-		ORDER BY hostname, received_at DESC
+		SELECT hostname, received_at, collection_id, timestamp, snail_version, data, errors
+		FROM hosts
+		ORDER BY received_at DESC
 	`
 
 	rows, err := ps.db.Query(query)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get latest reports: %w", err)
+		return nil, fmt.Errorf("failed to get all hosts: %w", err)
 	}
 	defer rows.Close()
 
@@ -379,9 +212,8 @@ func (ps *PostgresStorage) GetLatestReportPerHost() ([]*models.Report, error) {
 		var errors []string
 
 		if err := rows.Scan(
-			&report.ID,
-			&report.ReceivedAt,
 			&report.Meta.Hostname,
+			&report.ReceivedAt,
 			&report.Meta.CollectionID,
 			&report.Meta.Timestamp,
 			&report.Meta.SnailVersion,
@@ -391,6 +223,7 @@ func (ps *PostgresStorage) GetLatestReportPerHost() ([]*models.Report, error) {
 			return nil, fmt.Errorf("failed to scan report: %w", err)
 		}
 
+		report.ID = report.Meta.Hostname
 		report.Errors = errors
 		reports = append(reports, report)
 	}
@@ -429,4 +262,32 @@ func extractVulnerabilitySummary(data json.RawMessage) *models.VulnerabilitySumm
 	}
 
 	return &vulnData.Summary
+}
+
+// extractComplianceSummary parses compliance summary from report data
+func extractComplianceSummary(data json.RawMessage) *models.ComplianceSummary {
+	var allData map[string]json.RawMessage
+	if err := json.Unmarshal(data, &allData); err != nil {
+		return nil
+	}
+
+	compRaw, ok := allData["compliance"]
+	if !ok {
+		return nil
+	}
+
+	var compData struct {
+		ScanCompleted bool                     `json:"scan_completed"`
+		Summary       models.ComplianceSummary `json:"summary"`
+	}
+
+	if err := json.Unmarshal(compRaw, &compData); err != nil {
+		return nil
+	}
+
+	if !compData.ScanCompleted {
+		return nil
+	}
+
+	return &compData.Summary
 }

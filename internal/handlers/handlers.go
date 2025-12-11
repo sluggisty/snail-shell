@@ -5,11 +5,9 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 	"github.com/sluggisty/snail-shell/internal/models"
 	"github.com/sluggisty/snail-shell/internal/storage"
@@ -42,10 +40,12 @@ func (h *Handlers) Info(w http.ResponseWriter, r *http.Request) {
 		"version":     "0.1.0",
 		"description": "Backend service for snail-core system reports",
 		"endpoints": map[string]string{
-			"health":  "GET /health",
-			"ingest":  "POST /api/v1/ingest",
-			"reports": "GET /api/v1/reports",
-			"hosts":   "GET /api/v1/hosts",
+			"health":          "GET /health",
+			"ingest":          "POST /api/v1/ingest",
+			"hosts":           "GET /api/v1/hosts",
+			"host":            "GET /api/v1/hosts/{hostname}",
+			"vulnerabilities": "GET /api/v1/vulnerabilities",
+			"compliance":      "GET /api/v1/compliance",
 		},
 	})
 }
@@ -82,120 +82,35 @@ func (h *Handlers) Ingest(w http.ResponseWriter, r *http.Request) {
 	// Create report
 	now := time.Now().UTC()
 	report := &models.Report{
-		ID:         uuid.New().String(),
+		ID:         req.Meta.Hostname, // Use hostname as ID
 		ReceivedAt: now,
 		Meta:       req.Meta,
 		Data:       req.Data,
 		Errors:     req.Errors,
 	}
 
-	// Store the report
-	if err := h.storage.SaveReport(report); err != nil {
-		log.Error().Err(err).Str("hostname", req.Meta.Hostname).Msg("Failed to save report")
-		http.Error(w, `{"error": "failed to store report"}`, http.StatusInternalServerError)
+	// Store the report (replaces any previous data for this host)
+	if err := h.storage.SaveHost(report); err != nil {
+		log.Error().Err(err).Str("hostname", req.Meta.Hostname).Msg("Failed to save host data")
+		http.Error(w, `{"error": "failed to store host data"}`, http.StatusInternalServerError)
 		return
 	}
 
 	log.Info().
-		Str("report_id", report.ID).
 		Str("hostname", req.Meta.Hostname).
 		Str("collection_id", req.Meta.CollectionID).
 		Int("errors", len(req.Errors)).
-		Msg("Report ingested")
+		Msg("Host data updated")
 
 	// Send response
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(models.IngestResponse{
 		Status:     "ok",
-		ReportID:   report.ID,
+		ReportID:   req.Meta.Hostname,
 		ReceivedAt: now.Format(time.RFC3339),
-		Message:    "Report ingested successfully",
+		Message:    "Host data updated successfully",
 	})
-}
-
-// ListReports returns a list of all reports
-func (h *Handlers) ListReports(w http.ResponseWriter, r *http.Request) {
-	// Parse query params
-	limit := 100
-	offset := 0
-	hostname := r.URL.Query().Get("hostname")
-
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
-			limit = parsed
-		}
-	}
-	if o := r.URL.Query().Get("offset"); o != "" {
-		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
-			offset = parsed
-		}
-	}
-
-	reports, total, err := h.storage.ListReports(hostname, limit, offset)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to list reports")
-		http.Error(w, `{"error": "failed to retrieve reports"}`, http.StatusInternalServerError)
-		return
-	}
-
-	// Convert to summaries
-	summaries := make([]models.ReportSummary, len(reports))
-	for i, r := range reports {
-		summaries[i] = r.ToSummary()
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"reports": summaries,
-		"total":   total,
-		"limit":   limit,
-		"offset":  offset,
-	})
-}
-
-// GetReport returns a specific report by ID
-func (h *Handlers) GetReport(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		http.Error(w, `{"error": "missing report id"}`, http.StatusBadRequest)
-		return
-	}
-
-	report, err := h.storage.GetReport(id)
-	if err != nil {
-		if err == storage.ErrNotFound {
-			http.Error(w, `{"error": "report not found"}`, http.StatusNotFound)
-			return
-		}
-		log.Error().Err(err).Str("id", id).Msg("Failed to get report")
-		http.Error(w, `{"error": "failed to retrieve report"}`, http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(report)
-}
-
-// DeleteReport deletes a report by ID
-func (h *Handlers) DeleteReport(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		http.Error(w, `{"error": "missing report id"}`, http.StatusBadRequest)
-		return
-	}
-
-	if err := h.storage.DeleteReport(id); err != nil {
-		if err == storage.ErrNotFound {
-			http.Error(w, `{"error": "report not found"}`, http.StatusNotFound)
-			return
-		}
-		log.Error().Err(err).Str("id", id).Msg("Failed to delete report")
-		http.Error(w, `{"error": "failed to delete report"}`, http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
 }
 
 // ListHosts returns a list of all known hosts
@@ -214,7 +129,7 @@ func (h *Handlers) ListHosts(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GetHost returns summary for a specific host
+// GetHost returns the full data for a specific host
 func (h *Handlers) GetHost(w http.ResponseWriter, r *http.Request) {
 	hostname := chi.URLParam(r, "hostname")
 	if hostname == "" {
@@ -222,7 +137,7 @@ func (h *Handlers) GetHost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	host, err := h.storage.GetHost(hostname)
+	report, err := h.storage.GetHost(hostname)
 	if err != nil {
 		if err == storage.ErrNotFound {
 			http.Error(w, `{"error": "host not found"}`, http.StatusNotFound)
@@ -234,48 +149,39 @@ func (h *Handlers) GetHost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(host)
+	json.NewEncoder(w).Encode(report)
 }
 
-// GetHostReports returns all reports for a specific host
-func (h *Handlers) GetHostReports(w http.ResponseWriter, r *http.Request) {
+// DeleteHost removes a host
+func (h *Handlers) DeleteHost(w http.ResponseWriter, r *http.Request) {
 	hostname := chi.URLParam(r, "hostname")
 	if hostname == "" {
 		http.Error(w, `{"error": "missing hostname"}`, http.StatusBadRequest)
 		return
 	}
 
-	reports, total, err := h.storage.ListReports(hostname, 100, 0)
-	if err != nil {
-		log.Error().Err(err).Str("hostname", hostname).Msg("Failed to get host reports")
-		http.Error(w, `{"error": "failed to retrieve reports"}`, http.StatusInternalServerError)
+	if err := h.storage.DeleteHost(hostname); err != nil {
+		if err == storage.ErrNotFound {
+			http.Error(w, `{"error": "host not found"}`, http.StatusNotFound)
+			return
+		}
+		log.Error().Err(err).Str("hostname", hostname).Msg("Failed to delete host")
+		http.Error(w, `{"error": "failed to delete host"}`, http.StatusInternalServerError)
 		return
 	}
 
-	summaries := make([]models.ReportSummary, len(reports))
-	for i, r := range reports {
-		summaries[i] = r.ToSummary()
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"hostname": hostname,
-		"reports":  summaries,
-		"total":    total,
-	})
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // GetVulnerabilities returns aggregated CVE data across all hosts
 func (h *Handlers) GetVulnerabilities(w http.ResponseWriter, r *http.Request) {
-	// Get latest report per host
-	reports, err := h.storage.GetLatestReportPerHost()
+	reports, err := h.storage.GetAllHosts()
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to get latest reports")
-		http.Error(w, `{"error": "failed to retrieve reports"}`, http.StatusInternalServerError)
+		log.Error().Err(err).Msg("Failed to get hosts")
+		http.Error(w, `{"error": "failed to retrieve hosts"}`, http.StatusInternalServerError)
 		return
 	}
 
-	// Aggregate vulnerabilities across all reports
 	aggregation := h.aggregateVulnerabilities(reports)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -289,11 +195,8 @@ func (h *Handlers) aggregateVulnerabilities(reports []*models.Report) *models.Vu
 		CVEs:        []models.AggregatedCVE{},
 	}
 
-	// Map to aggregate CVEs: cve_id -> aggregated data
 	cveMap := make(map[string]*models.AggregatedCVE)
-	// Track which hosts have vulnerabilities
 	hostsWithVulns := make(map[string]bool)
-	// Track packages per CVE
 	cvePackages := make(map[string]map[string]bool)
 
 	for _, report := range reports {
@@ -315,7 +218,6 @@ func (h *Handlers) aggregateVulnerabilities(reports []*models.Report) *models.Vu
 			}
 
 			if existing, ok := cveMap[cveID]; ok {
-				// Add this host if not already present
 				found := false
 				for _, h := range existing.AffectedHosts {
 					if h == hostname {
@@ -327,19 +229,16 @@ func (h *Handlers) aggregateVulnerabilities(reports []*models.Report) *models.Vu
 					existing.AffectedHosts = append(existing.AffectedHosts, hostname)
 					existing.AffectedCount++
 				}
-				// Track package
 				if vuln.PackageName != "" {
 					if cvePackages[cveID] == nil {
 						cvePackages[cveID] = make(map[string]bool)
 					}
 					cvePackages[cveID][vuln.PackageName] = true
 				}
-				// Update fixed version if we have one
 				if existing.FixedVersion == "" && vuln.FixedVersion != "" {
 					existing.FixedVersion = vuln.FixedVersion
 				}
 			} else {
-				// New CVE
 				agg := &models.AggregatedCVE{
 					CVEID:         cveID,
 					Severity:      vuln.Severity,
@@ -352,7 +251,6 @@ func (h *Handlers) aggregateVulnerabilities(reports []*models.Report) *models.Vu
 					AffectedCount: 1,
 				}
 
-				// Extract CVSS v3 score
 				if vuln.CVSS != nil {
 					if v3Score, ok := vuln.CVSS["v3_score"].(float64); ok {
 						agg.CVSSv3Score = v3Score
@@ -361,12 +259,10 @@ func (h *Handlers) aggregateVulnerabilities(reports []*models.Report) *models.Vu
 
 				cveMap[cveID] = agg
 
-				// Track package
 				if vuln.PackageName != "" {
 					cvePackages[cveID] = map[string]bool{vuln.PackageName: true}
 				}
 
-				// Update severity counts
 				switch vuln.Severity {
 				case "CRITICAL":
 					result.SeverityCounts.Critical++
@@ -383,10 +279,8 @@ func (h *Handlers) aggregateVulnerabilities(reports []*models.Report) *models.Vu
 		}
 	}
 
-	// Convert map to slice and add package names
 	cves := make([]models.AggregatedCVE, 0, len(cveMap))
 	for cveID, agg := range cveMap {
-		// Add package names
 		if pkgs, ok := cvePackages[cveID]; ok {
 			for pkg := range pkgs {
 				agg.PackageNames = append(agg.PackageNames, pkg)
@@ -395,7 +289,6 @@ func (h *Handlers) aggregateVulnerabilities(reports []*models.Report) *models.Vu
 		cves = append(cves, *agg)
 	}
 
-	// Sort by severity (critical first), then by affected count
 	severityOrder := map[string]int{
 		"CRITICAL": 0,
 		"HIGH":     1,
@@ -437,15 +330,13 @@ func truncateString(s string, maxLen int) string {
 
 // GetCompliance returns aggregated compliance policy data across all hosts
 func (h *Handlers) GetCompliance(w http.ResponseWriter, r *http.Request) {
-	// Get latest report per host
-	reports, err := h.storage.GetLatestReportPerHost()
+	reports, err := h.storage.GetAllHosts()
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to get latest reports")
-		http.Error(w, `{"error": "failed to retrieve reports"}`, http.StatusInternalServerError)
+		log.Error().Err(err).Msg("Failed to get hosts")
+		http.Error(w, `{"error": "failed to retrieve hosts"}`, http.StatusInternalServerError)
 		return
 	}
 
-	// Aggregate compliance across all reports
 	aggregation := h.aggregateCompliance(reports)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -459,9 +350,7 @@ func (h *Handlers) aggregateCompliance(reports []*models.Report) *models.Complia
 		Policies:    []models.AggregatedPolicy{},
 	}
 
-	// Map to aggregate policies: profile_id -> aggregated data
 	policyMap := make(map[string]*models.AggregatedPolicy)
-	// Track hosts with compliance
 	hostsWithCompliance := make(map[string]bool)
 
 	for _, report := range reports {
@@ -473,7 +362,6 @@ func (h *Handlers) aggregateCompliance(reports []*models.Report) *models.Complia
 		hostname := report.Meta.Hostname
 		hostsWithCompliance[hostname] = true
 
-		// Get profile ID
 		profileID := ""
 		profileName := ""
 		if compData.ProfileInfo != nil {
@@ -485,7 +373,6 @@ func (h *Handlers) aggregateCompliance(reports []*models.Report) *models.Complia
 			profileName = "Unknown Profile"
 		}
 
-		// Create host result
 		hostResult := models.HostComplianceResult{
 			Hostname:    hostname,
 			FailedRules: []models.ComplianceRule{},
@@ -503,7 +390,6 @@ func (h *Handlers) aggregateCompliance(reports []*models.Report) *models.Complia
 			hostResult.ScanTime = compData.ScanTime.End
 		}
 
-		// Collect failed rules (limit to top 20)
 		failedCount := 0
 		for _, rule := range compData.Rules {
 			if rule.Status == "fail" || rule.Status == "error" {
@@ -515,18 +401,15 @@ func (h *Handlers) aggregateCompliance(reports []*models.Report) *models.Complia
 			}
 		}
 
-		// Add to or update policy map
 		if existing, ok := policyMap[profileID]; ok {
 			existing.HostCount++
 			existing.HostResults = append(existing.HostResults, hostResult)
-			// Recalculate average score
 			totalScore := 0.0
 			for _, hr := range existing.HostResults {
 				totalScore += hr.Score
 			}
 			existing.AverageScore = totalScore / float64(len(existing.HostResults))
-			
-			// Update pass/fail counts
+
 			if hostResult.Score >= 100 {
 				existing.TotalPassing++
 			} else {
@@ -554,15 +437,12 @@ func (h *Handlers) aggregateCompliance(reports []*models.Report) *models.Complia
 		}
 	}
 
-	// Convert map to slice
 	policies := make([]models.AggregatedPolicy, 0, len(policyMap))
 	for _, policy := range policyMap {
-		// Sort host results by score (lowest first - worst compliance)
 		sortHostResultsByScore(policy.HostResults)
 		policies = append(policies, *policy)
 	}
 
-	// Sort policies by host count (most common first)
 	for i := 0; i < len(policies)-1; i++ {
 		for j := i + 1; j < len(policies); j++ {
 			if policies[i].HostCount < policies[j].HostCount {

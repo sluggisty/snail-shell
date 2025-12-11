@@ -13,29 +13,22 @@ var (
 	ErrNotFound = errors.New("not found")
 )
 
-// Storage defines the interface for report storage
+// Storage defines the interface for host storage
 type Storage interface {
-	// SaveReport stores a new report
-	SaveReport(report *models.Report) error
+	// SaveHost stores or updates a host's report (replaces any previous data)
+	SaveHost(report *models.Report) error
 
-	// GetReport retrieves a report by ID
-	GetReport(id string) (*models.Report, error)
+	// GetHost returns the full report data for a specific host
+	GetHost(hostname string) (*models.Report, error)
 
-	// DeleteReport removes a report by ID
-	DeleteReport(id string) error
+	// DeleteHost removes a host
+	DeleteHost(hostname string) error
 
-	// ListReports returns reports with pagination
-	// If hostname is empty, returns all reports
-	ListReports(hostname string, limit, offset int) ([]*models.Report, int, error)
-
-	// ListHosts returns all known hosts
+	// ListHosts returns all hosts with summary info
 	ListHosts() ([]*models.HostSummary, error)
 
-	// GetHost returns summary for a specific host
-	GetHost(hostname string) (*models.HostSummary, error)
-
-	// GetLatestReportPerHost returns the most recent report for each host
-	GetLatestReportPerHost() ([]*models.Report, error)
+	// GetAllHosts returns all hosts with their full report data
+	GetAllHosts() ([]*models.Report, error)
 
 	// Close closes the storage connection
 	Close() error
@@ -46,5 +39,5 @@ func New(cfg config.StorageConfig) (Storage, error) {
 	if cfg.DSN == "" {
 		return nil, fmt.Errorf("DATABASE_URL or storage.dsn is required")
 	}
-	return NewPostgresStorage(cfg.DSN, cfg.MaxReports)
+	return NewPostgresStorage(cfg.DSN)
 }

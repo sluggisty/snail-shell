@@ -48,14 +48,13 @@ type ReportSummary struct {
 	VulnerabilitySummary *VulnerabilitySummary `json:"vulnerability_summary,omitempty"`
 }
 
-// HostSummary represents aggregated info about a host
+// HostSummary represents summary info about a host
 type HostSummary struct {
 	Hostname                   string                `json:"hostname"`
-	ReportCount                int                   `json:"report_count"`
-	FirstSeen                  time.Time             `json:"first_seen"`
 	LastSeen                   time.Time             `json:"last_seen"`
-	LatestReport               string                `json:"latest_report_id"`
-	LatestVulnerabilitySummary *VulnerabilitySummary `json:"latest_vulnerability_summary,omitempty"`
+	HasErrors                  bool                  `json:"has_errors"`
+	LatestVulnerabilitySummary *VulnerabilitySummary `json:"vulnerability_summary,omitempty"`
+	LatestComplianceSummary    *ComplianceSummary    `json:"compliance_summary,omitempty"`
 }
 
 // ToSummary converts a Report to ReportSummary
@@ -199,21 +198,21 @@ type VulnerabilitiesAggregation struct {
 
 // ComplianceData represents the compliance scanner output
 type ComplianceData struct {
-	Scanner               string            `json:"scanner"`
-	OscapAvailable        bool              `json:"oscap_available"`
-	ScapContentAvailable  bool              `json:"scap_content_available"`
-	ScanCompleted         bool              `json:"scan_completed"`
-	OscapVersion          string            `json:"oscap_version,omitempty"`
-	ContentFile           string            `json:"content_file,omitempty"`
-	Error                 string            `json:"error,omitempty"`
-	Distro                *ComplianceDistro `json:"distro,omitempty"`
-	ProfileInfo           *ComplianceProfile `json:"profile_info,omitempty"`
-	AvailableProfiles     []string          `json:"available_profiles,omitempty"`
-	Summary               *ComplianceSummary `json:"summary,omitempty"`
-	Rules                 []ComplianceRule  `json:"rules,omitempty"`
-	ScanTime              *ScanTime         `json:"scan_time,omitempty"`
-	RulesTruncated        bool              `json:"rules_truncated,omitempty"`
-	TotalFailedRules      int               `json:"total_failed_rules,omitempty"`
+	Scanner              string             `json:"scanner"`
+	OscapAvailable       bool               `json:"oscap_available"`
+	ScapContentAvailable bool               `json:"scap_content_available"`
+	ScanCompleted        bool               `json:"scan_completed"`
+	OscapVersion         string             `json:"oscap_version,omitempty"`
+	ContentFile          string             `json:"content_file,omitempty"`
+	Error                string             `json:"error,omitempty"`
+	Distro               *ComplianceDistro  `json:"distro,omitempty"`
+	ProfileInfo          *ComplianceProfile `json:"profile_info,omitempty"`
+	AvailableProfiles    []string           `json:"available_profiles,omitempty"`
+	Summary              *ComplianceSummary `json:"summary,omitempty"`
+	Rules                []ComplianceRule   `json:"rules,omitempty"`
+	ScanTime             *ScanTime          `json:"scan_time,omitempty"`
+	RulesTruncated       bool               `json:"rules_truncated,omitempty"`
+	TotalFailedRules     int                `json:"total_failed_rules,omitempty"`
 }
 
 // ComplianceDistro contains OS distribution info from compliance scan
@@ -290,33 +289,33 @@ func (r *Report) GetComplianceSummary() *ComplianceSummary {
 
 // HostComplianceResult represents a single host's compliance result for a policy
 type HostComplianceResult struct {
-	Hostname      string             `json:"hostname"`
-	Score         float64            `json:"score"`
-	PassCount     int                `json:"pass_count"`
-	FailCount     int                `json:"fail_count"`
-	ErrorCount    int                `json:"error_count"`
-	TotalRules    int                `json:"total_rules"`
-	ScanTime      string             `json:"scan_time,omitempty"`
-	FailedRules   []ComplianceRule   `json:"failed_rules,omitempty"`
+	Hostname    string           `json:"hostname"`
+	Score       float64          `json:"score"`
+	PassCount   int              `json:"pass_count"`
+	FailCount   int              `json:"fail_count"`
+	ErrorCount  int              `json:"error_count"`
+	TotalRules  int              `json:"total_rules"`
+	ScanTime    string           `json:"scan_time,omitempty"`
+	FailedRules []ComplianceRule `json:"failed_rules,omitempty"`
 }
 
 // AggregatedPolicy represents a compliance policy scanned across multiple hosts
 type AggregatedPolicy struct {
-	ProfileID       string                  `json:"profile_id"`
-	ProfileName     string                  `json:"profile_name"`
-	ContentFile     string                  `json:"content_file,omitempty"`
-	HostCount       int                     `json:"host_count"`
-	AverageScore    float64                 `json:"average_score"`
-	TotalFailing    int                     `json:"total_failing"` // hosts with score < 100
-	TotalPassing    int                     `json:"total_passing"` // hosts with score == 100
-	HostResults     []HostComplianceResult  `json:"host_results"`
+	ProfileID    string                 `json:"profile_id"`
+	ProfileName  string                 `json:"profile_name"`
+	ContentFile  string                 `json:"content_file,omitempty"`
+	HostCount    int                    `json:"host_count"`
+	AverageScore float64                `json:"average_score"`
+	TotalFailing int                    `json:"total_failing"` // hosts with score < 100
+	TotalPassing int                    `json:"total_passing"` // hosts with score == 100
+	HostResults  []HostComplianceResult `json:"host_results"`
 }
 
 // ComplianceAggregation is the response for fleet-wide compliance data
 type ComplianceAggregation struct {
-	TotalHosts          int                 `json:"total_hosts"`
-	HostsWithCompliance int                 `json:"hosts_with_compliance"`
-	TotalPolicies       int                 `json:"total_policies"`
-	Policies            []AggregatedPolicy  `json:"policies"`
-	GeneratedAt         time.Time           `json:"generated_at"`
+	TotalHosts          int                `json:"total_hosts"`
+	HostsWithCompliance int                `json:"hosts_with_compliance"`
+	TotalPolicies       int                `json:"total_policies"`
+	Policies            []AggregatedPolicy `json:"policies"`
+	GeneratedAt         time.Time          `json:"generated_at"`
 }
