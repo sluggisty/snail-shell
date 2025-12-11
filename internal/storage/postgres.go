@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 	"github.com/rs/zerolog/log"
 	"github.com/sluggisty/snail-shell/internal/models"
 )
@@ -99,7 +99,7 @@ func (ps *PostgresStorage) SaveReport(report *models.Report) error {
 		report.Meta.Timestamp,
 		report.Meta.SnailVersion,
 		report.Data,
-		errors,
+		pq.Array(errors),
 	)
 
 	if err != nil {
@@ -159,7 +159,7 @@ func (ps *PostgresStorage) GetReport(id string) (*models.Report, error) {
 		&report.Meta.Timestamp,
 		&report.Meta.SnailVersion,
 		&report.Data,
-		(*[]string)(&errors),
+		pq.Array(&errors),
 	)
 
 	if err == sql.ErrNoRows {
@@ -245,7 +245,7 @@ func (ps *PostgresStorage) ListReports(hostname string, limit, offset int) ([]*m
 			&report.Meta.Timestamp,
 			&report.Meta.SnailVersion,
 			&report.Data,
-			(*[]string)(&errors),
+			pq.Array(&errors),
 		); err != nil {
 			return nil, 0, fmt.Errorf("failed to scan report: %w", err)
 		}
