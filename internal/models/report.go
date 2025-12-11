@@ -196,3 +196,127 @@ type VulnerabilitiesAggregation struct {
 	CVEs            []AggregatedCVE      `json:"cves"`
 	GeneratedAt     time.Time            `json:"generated_at"`
 }
+
+// ComplianceData represents the compliance scanner output
+type ComplianceData struct {
+	Scanner               string            `json:"scanner"`
+	OscapAvailable        bool              `json:"oscap_available"`
+	ScapContentAvailable  bool              `json:"scap_content_available"`
+	ScanCompleted         bool              `json:"scan_completed"`
+	OscapVersion          string            `json:"oscap_version,omitempty"`
+	ContentFile           string            `json:"content_file,omitempty"`
+	Error                 string            `json:"error,omitempty"`
+	Distro                *ComplianceDistro `json:"distro,omitempty"`
+	ProfileInfo           *ComplianceProfile `json:"profile_info,omitempty"`
+	AvailableProfiles     []string          `json:"available_profiles,omitempty"`
+	Summary               *ComplianceSummary `json:"summary,omitempty"`
+	Rules                 []ComplianceRule  `json:"rules,omitempty"`
+	ScanTime              *ScanTime         `json:"scan_time,omitempty"`
+	RulesTruncated        bool              `json:"rules_truncated,omitempty"`
+	TotalFailedRules      int               `json:"total_failed_rules,omitempty"`
+}
+
+// ComplianceDistro contains OS distribution info from compliance scan
+type ComplianceDistro struct {
+	ID           string `json:"id,omitempty"`
+	OriginalID   string `json:"original_id,omitempty"`
+	Version      string `json:"version,omitempty"`
+	MajorVersion string `json:"major_version,omitempty"`
+	Name         string `json:"name,omitempty"`
+	Like         string `json:"like,omitempty"`
+}
+
+// ComplianceProfile contains the scanned profile info
+type ComplianceProfile struct {
+	Name string `json:"name,omitempty"`
+	ID   string `json:"id,omitempty"`
+}
+
+// ComplianceSummary contains scan result counts
+type ComplianceSummary struct {
+	TotalRules    int     `json:"total_rules,omitempty"`
+	Pass          int     `json:"pass,omitempty"`
+	Fail          int     `json:"fail,omitempty"`
+	Error         int     `json:"error,omitempty"`
+	Unknown       int     `json:"unknown,omitempty"`
+	NotApplicable int     `json:"notapplicable,omitempty"`
+	NotChecked    int     `json:"notchecked,omitempty"`
+	NotSelected   int     `json:"notselected,omitempty"`
+	Informational int     `json:"informational,omitempty"`
+	Fixed         int     `json:"fixed,omitempty"`
+	Score         float64 `json:"score,omitempty"`
+}
+
+// ComplianceRule represents a single compliance check result
+type ComplianceRule struct {
+	ID       string   `json:"id"`
+	Status   string   `json:"status"`
+	Severity string   `json:"severity,omitempty"`
+	Title    string   `json:"title,omitempty"`
+	Messages []string `json:"messages,omitempty"`
+}
+
+// ScanTime contains when the scan ran
+type ScanTime struct {
+	Start string `json:"start,omitempty"`
+	End   string `json:"end,omitempty"`
+}
+
+// ParseComplianceData extracts compliance data from the report
+func (r *Report) ParseComplianceData() (*ComplianceData, error) {
+	var allData map[string]json.RawMessage
+	if err := json.Unmarshal(r.Data, &allData); err != nil {
+		return nil, err
+	}
+
+	var compData ComplianceData
+	if raw, ok := allData["compliance"]; ok {
+		if err := json.Unmarshal(raw, &compData); err != nil {
+			return nil, err
+		}
+	}
+
+	return &compData, nil
+}
+
+// GetComplianceSummary returns just the compliance summary from the report
+func (r *Report) GetComplianceSummary() *ComplianceSummary {
+	compData, err := r.ParseComplianceData()
+	if err != nil || compData == nil || !compData.ScanCompleted {
+		return nil
+	}
+	return compData.Summary
+}
+
+// HostComplianceResult represents a single host's compliance result for a policy
+type HostComplianceResult struct {
+	Hostname      string             `json:"hostname"`
+	Score         float64            `json:"score"`
+	PassCount     int                `json:"pass_count"`
+	FailCount     int                `json:"fail_count"`
+	ErrorCount    int                `json:"error_count"`
+	TotalRules    int                `json:"total_rules"`
+	ScanTime      string             `json:"scan_time,omitempty"`
+	FailedRules   []ComplianceRule   `json:"failed_rules,omitempty"`
+}
+
+// AggregatedPolicy represents a compliance policy scanned across multiple hosts
+type AggregatedPolicy struct {
+	ProfileID       string                  `json:"profile_id"`
+	ProfileName     string                  `json:"profile_name"`
+	ContentFile     string                  `json:"content_file,omitempty"`
+	HostCount       int                     `json:"host_count"`
+	AverageScore    float64                 `json:"average_score"`
+	TotalFailing    int                     `json:"total_failing"` // hosts with score < 100
+	TotalPassing    int                     `json:"total_passing"` // hosts with score == 100
+	HostResults     []HostComplianceResult  `json:"host_results"`
+}
+
+// ComplianceAggregation is the response for fleet-wide compliance data
+type ComplianceAggregation struct {
+	TotalHosts          int                 `json:"total_hosts"`
+	HostsWithCompliance int                 `json:"hosts_with_compliance"`
+	TotalPolicies       int                 `json:"total_policies"`
+	Policies            []AggregatedPolicy  `json:"policies"`
+	GeneratedAt         time.Time           `json:"generated_at"`
+}
