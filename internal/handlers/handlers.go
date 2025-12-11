@@ -264,3 +264,173 @@ func (h *Handlers) GetHostReports(w http.ResponseWriter, r *http.Request) {
 		"total":    total,
 	})
 }
+
+// GetVulnerabilities returns aggregated CVE data across all hosts
+func (h *Handlers) GetVulnerabilities(w http.ResponseWriter, r *http.Request) {
+	// Get latest report per host
+	reports, err := h.storage.GetLatestReportPerHost()
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get latest reports")
+		http.Error(w, `{"error": "failed to retrieve reports"}`, http.StatusInternalServerError)
+		return
+	}
+
+	// Aggregate vulnerabilities across all reports
+	aggregation := h.aggregateVulnerabilities(reports)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(aggregation)
+}
+
+func (h *Handlers) aggregateVulnerabilities(reports []*models.Report) *models.VulnerabilitiesAggregation {
+	result := &models.VulnerabilitiesAggregation{
+		TotalHosts:  len(reports),
+		GeneratedAt: time.Now().UTC(),
+		CVEs:        []models.AggregatedCVE{},
+	}
+
+	// Map to aggregate CVEs: cve_id -> aggregated data
+	cveMap := make(map[string]*models.AggregatedCVE)
+	// Track which hosts have vulnerabilities
+	hostsWithVulns := make(map[string]bool)
+	// Track packages per CVE
+	cvePackages := make(map[string]map[string]bool)
+
+	for _, report := range reports {
+		vulnData, err := report.ParseVulnerabilityData()
+		if err != nil || vulnData == nil || !vulnData.ScanCompleted {
+			continue
+		}
+
+		hostname := report.Meta.Hostname
+
+		if len(vulnData.Vulnerabilities) > 0 {
+			hostsWithVulns[hostname] = true
+		}
+
+		for _, vuln := range vulnData.Vulnerabilities {
+			cveID := vuln.CVEID
+			if cveID == "" {
+				continue
+			}
+
+			if existing, ok := cveMap[cveID]; ok {
+				// Add this host if not already present
+				found := false
+				for _, h := range existing.AffectedHosts {
+					if h == hostname {
+						found = true
+						break
+					}
+				}
+				if !found {
+					existing.AffectedHosts = append(existing.AffectedHosts, hostname)
+					existing.AffectedCount++
+				}
+				// Track package
+				if vuln.PackageName != "" {
+					if cvePackages[cveID] == nil {
+						cvePackages[cveID] = make(map[string]bool)
+					}
+					cvePackages[cveID][vuln.PackageName] = true
+				}
+				// Update fixed version if we have one
+				if existing.FixedVersion == "" && vuln.FixedVersion != "" {
+					existing.FixedVersion = vuln.FixedVersion
+				}
+			} else {
+				// New CVE
+				agg := &models.AggregatedCVE{
+					CVEID:         cveID,
+					Severity:      vuln.Severity,
+					Title:         vuln.Title,
+					Description:   truncateString(vuln.Description, 500),
+					PrimaryURL:    vuln.PrimaryURL,
+					FixedVersion:  vuln.FixedVersion,
+					PublishedDate: vuln.PublishedDate,
+					AffectedHosts: []string{hostname},
+					AffectedCount: 1,
+				}
+
+				// Extract CVSS v3 score
+				if vuln.CVSS != nil {
+					if v3Score, ok := vuln.CVSS["v3_score"].(float64); ok {
+						agg.CVSSv3Score = v3Score
+					}
+				}
+
+				cveMap[cveID] = agg
+
+				// Track package
+				if vuln.PackageName != "" {
+					cvePackages[cveID] = map[string]bool{vuln.PackageName: true}
+				}
+
+				// Update severity counts
+				switch vuln.Severity {
+				case "CRITICAL":
+					result.SeverityCounts.Critical++
+				case "HIGH":
+					result.SeverityCounts.High++
+				case "MEDIUM":
+					result.SeverityCounts.Medium++
+				case "LOW":
+					result.SeverityCounts.Low++
+				default:
+					result.SeverityCounts.Unknown++
+				}
+			}
+		}
+	}
+
+	// Convert map to slice and add package names
+	cves := make([]models.AggregatedCVE, 0, len(cveMap))
+	for cveID, agg := range cveMap {
+		// Add package names
+		if pkgs, ok := cvePackages[cveID]; ok {
+			for pkg := range pkgs {
+				agg.PackageNames = append(agg.PackageNames, pkg)
+			}
+		}
+		cves = append(cves, *agg)
+	}
+
+	// Sort by severity (critical first), then by affected count
+	severityOrder := map[string]int{
+		"CRITICAL": 0,
+		"HIGH":     1,
+		"MEDIUM":   2,
+		"LOW":      3,
+		"UNKNOWN":  4,
+	}
+
+	for i := 0; i < len(cves)-1; i++ {
+		for j := i + 1; j < len(cves); j++ {
+			swapNeeded := false
+			si := severityOrder[cves[i].Severity]
+			sj := severityOrder[cves[j].Severity]
+			if si > sj {
+				swapNeeded = true
+			} else if si == sj && cves[i].AffectedCount < cves[j].AffectedCount {
+				swapNeeded = true
+			}
+			if swapNeeded {
+				cves[i], cves[j] = cves[j], cves[i]
+			}
+		}
+	}
+
+	result.HostsWithVulns = len(hostsWithVulns)
+	result.TotalUniqueCVEs = len(cves)
+	result.SeverityCounts.TotalVulnerabilities = len(cves)
+	result.CVEs = cves
+
+	return result
+}
+
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
+}

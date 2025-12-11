@@ -34,6 +34,9 @@ type Storage interface {
 	// GetHost returns summary for a specific host
 	GetHost(hostname string) (*models.HostSummary, error)
 
+	// GetLatestReportPerHost returns the most recent report for each host
+	GetLatestReportPerHost() ([]*models.Report, error)
+
 	// Close closes the storage connection
 	Close() error
 }
