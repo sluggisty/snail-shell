@@ -66,6 +66,9 @@ func (s *Server) setupRoutes() {
 		r.Get("/hosts", h.ListHosts)
 		r.Get("/hosts/{hostname}", h.GetHost)
 		r.Get("/hosts/{hostname}/reports", h.GetHostReports)
+
+		// Aggregation endpoints
+		r.Get("/vulnerabilities", h.GetVulnerabilities)
 	})
 
 	s.router = r

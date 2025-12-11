@@ -358,6 +358,46 @@ func (ps *PostgresStorage) GetHost(hostname string) (*models.HostSummary, error)
 	return host, nil
 }
 
+// GetLatestReportPerHost returns the most recent report for each host
+func (ps *PostgresStorage) GetLatestReportPerHost() ([]*models.Report, error) {
+	query := `
+		SELECT DISTINCT ON (hostname) 
+			id, received_at, hostname, collection_id, timestamp, snail_version, data, errors
+		FROM reports
+		ORDER BY hostname, received_at DESC
+	`
+
+	rows, err := ps.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get latest reports: %w", err)
+	}
+	defer rows.Close()
+
+	var reports []*models.Report
+	for rows.Next() {
+		report := &models.Report{}
+		var errors []string
+
+		if err := rows.Scan(
+			&report.ID,
+			&report.ReceivedAt,
+			&report.Meta.Hostname,
+			&report.Meta.CollectionID,
+			&report.Meta.Timestamp,
+			&report.Meta.SnailVersion,
+			&report.Data,
+			pq.Array(&errors),
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan report: %w", err)
+		}
+
+		report.Errors = errors
+		reports = append(reports, report)
+	}
+
+	return reports, nil
+}
+
 // Close closes the database connection
 func (ps *PostgresStorage) Close() error {
 	return ps.db.Close()
