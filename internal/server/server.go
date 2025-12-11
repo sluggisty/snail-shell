@@ -57,15 +57,10 @@ func (s *Server) setupRoutes() {
 		// Ingest endpoint - receives reports from snail-core
 		r.Post("/ingest", h.Ingest)
 
-		// Query endpoints
-		r.Get("/reports", h.ListReports)
-		r.Get("/reports/{id}", h.GetReport)
-		r.Delete("/reports/{id}", h.DeleteReport)
-
-		// Summary endpoints
+		// Host endpoints
 		r.Get("/hosts", h.ListHosts)
 		r.Get("/hosts/{hostname}", h.GetHost)
-		r.Get("/hosts/{hostname}/reports", h.GetHostReports)
+		r.Delete("/hosts/{hostname}", h.DeleteHost)
 
 		// Aggregation endpoints
 		r.Get("/vulnerabilities", h.GetVulnerabilities)

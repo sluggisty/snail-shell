@@ -33,9 +33,7 @@ type AuthConfig struct {
 
 // StorageConfig holds PostgreSQL storage settings
 type StorageConfig struct {
-	DSN        string `yaml:"dsn"` // PostgreSQL connection string
-	MaxReports int    `yaml:"max_reports"`
-	Retention  string `yaml:"retention"` // e.g., "30d", "1w"
+	DSN string `yaml:"dsn"` // PostgreSQL connection string
 }
 
 // Default returns a configuration with sensible defaults
@@ -51,10 +49,7 @@ func Default() *Config {
 			Enabled:  false,
 			AllowAll: true,
 		},
-		Storage: StorageConfig{
-			MaxReports: 1000,
-			Retention:  "30d",
-		},
+		Storage: StorageConfig{},
 	}
 }
 
