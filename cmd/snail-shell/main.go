@@ -24,6 +24,11 @@ func main() {
 	debug := flag.Bool("debug", false, "Enable debug logging")
 	generateTestData := flag.Bool("generate-test-data", false, "Generate test data instead of running server")
 	testDataCount := flag.Int("test-hosts", 50, "Number of test hosts to generate (used with -generate-test-data)")
+	
+	// Also support single dash versions for compatibility
+	flag.BoolVar(generateTestData, "g", false, "Alias for -generate-test-data")
+	flag.IntVar(testDataCount, "n", 50, "Alias for -test-hosts")
+	
 	flag.Parse()
 
 	// Setup logging
@@ -112,6 +117,15 @@ func generateData(count int, configPath string) error {
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
+	}
+	
+	// Check if DSN is set
+	if cfg.Storage.DSN == "" {
+		return fmt.Errorf("DATABASE_URL environment variable or storage.dsn in config.yaml is required\n" +
+			"Set it with: export DATABASE_URL='postgres://user:password@localhost:5432/snailshell?sslmode=disable'\n" +
+			"Or add to config.yaml:\n" +
+			"storage:\n" +
+			"  dsn: postgres://user:password@localhost:5432/snailshell?sslmode=disable")
 	}
 	
 	// Initialize storage

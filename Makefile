@@ -34,15 +34,15 @@ run:
 
 # Run with debug logging
 run-debug:
-	$(GORUN) ./cmd/snail-shell --debug
+	$(GORUN) ./cmd/snail-shell -debug
 
 # Generate test data
 test-data:
-	$(GORUN) ./cmd/snail-shell --generate-test-data --test-hosts 50
+	$(GORUN) ./cmd/snail-shell -generate-test-data -test-hosts 50
 
 # Generate lots of test data
 test-data-large:
-	$(GORUN) ./cmd/snail-shell --generate-test-data --test-hosts 200
+	$(GORUN) ./cmd/snail-shell -generate-test-data -test-hosts 200
 
 # Clean build artifacts
 clean:

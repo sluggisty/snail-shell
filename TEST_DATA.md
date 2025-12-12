@@ -8,13 +8,13 @@ Snail Shell includes a test data generator to create realistic test data for dev
 
 ```bash
 # Generate 50 test hosts (default)
-./bin/snail-shell --generate-test-data
+./bin/snail-shell -generate-test-data
 
 # Generate specific number of hosts
-./bin/snail-shell --generate-test-data --test-hosts 100
+./bin/snail-shell -generate-test-data -test-hosts 100
 
 # Generate 200 hosts for large-scale testing
-./bin/snail-shell --generate-test-data --test-hosts 200
+./bin/snail-shell -generate-test-data -test-hosts 200
 ```
 
 ### Using Make
@@ -25,6 +25,30 @@ make test-data
 
 # Generate 200 test hosts
 make test-data-large
+```
+
+### Using Docker Compose
+
+```bash
+# First, make sure postgres is running
+docker compose up -d postgres
+
+# Wait for postgres to be ready (about 10 seconds)
+sleep 10
+
+# Generate 50 test hosts
+docker compose run --rm snail-shell -generate-test-data
+
+# Generate 100 test hosts
+docker compose run --rm snail-shell -generate-test-data -test-hosts 100
+
+# Generate 200 test hosts
+docker compose run --rm snail-shell -generate-test-data -test-hosts 200
+```
+
+**One-liner:**
+```bash
+docker compose up -d postgres && sleep 10 && docker compose run --rm snail-shell -generate-test-data -test-hosts 200
 ```
 
 ## What Gets Generated
@@ -107,4 +131,3 @@ INFO Test data generation complete! hosts_created=50
 - Existing hosts with the same hostname will be overwritten
 - Generated data uses realistic but fake CVE IDs (CVE-2024-12345, etc.)
 - All data is randomly generated but follows realistic patterns
-
