@@ -31,6 +31,33 @@ make run
 make run-debug
 ```
 
+### Generate Test Data
+
+Generate test data with multiple hosts for development and testing:
+
+```bash
+# Generate 50 test hosts (default)
+./bin/snail-shell --generate-test-data
+
+# Generate 100 test hosts
+./bin/snail-shell --generate-test-data --test-hosts 100
+
+# Generate 200 test hosts
+./bin/snail-shell --generate-test-data --test-hosts 200
+```
+
+This will create realistic test data including:
+- Multiple hosts with different Fedora versions (36-42)
+- System information (OS, kernel, hardware)
+- Network configuration
+- Package lists
+- Service status
+- **Vulnerabilities** (85% of hosts have CVEs with varying severities)
+- **Compliance scans** (70% of hosts have compliance data)
+- Realistic timestamps (hosts report at different times)
+
+The test data is stored in your configured storage backend (PostgreSQL or file-based).
+
 ### Docker
 
 ```bash
