@@ -171,19 +171,25 @@ func (r *Report) GetVulnerabilitySummary() *VulnerabilitySummary {
 	return &vulnData.Summary
 }
 
+// AffectedHost represents a host affected by a CVE with its last upload time
+type AffectedHost struct {
+	Hostname string    `json:"hostname"`
+	LastSeen time.Time `json:"last_seen"`
+}
+
 // AggregatedCVE represents a CVE affecting multiple hosts
 type AggregatedCVE struct {
-	CVEID         string   `json:"cve_id"`
-	Severity      string   `json:"severity"`
-	Title         string   `json:"title"`
-	Description   string   `json:"description,omitempty"`
-	PrimaryURL    string   `json:"primary_url,omitempty"`
-	FixedVersion  string   `json:"fixed_version,omitempty"`
-	PublishedDate string   `json:"published_date,omitempty"`
-	AffectedHosts []string `json:"affected_hosts"`
-	AffectedCount int      `json:"affected_count"`
-	PackageNames  []string `json:"package_names,omitempty"`
-	CVSSv3Score   float64  `json:"cvss_v3_score,omitempty"`
+	CVEID         string         `json:"cve_id"`
+	Severity      string         `json:"severity"`
+	Title         string         `json:"title"`
+	Description   string         `json:"description,omitempty"`
+	PrimaryURL    string         `json:"primary_url,omitempty"`
+	FixedVersion  string         `json:"fixed_version,omitempty"`
+	PublishedDate string         `json:"published_date,omitempty"`
+	AffectedHosts []AffectedHost `json:"affected_hosts"`
+	AffectedCount int            `json:"affected_count"`
+	PackageNames  []string       `json:"package_names,omitempty"`
+	CVSSv3Score   float64        `json:"cvss_v3_score,omitempty"`
 }
 
 // VulnerabilitiesAggregation is the response for fleet-wide vulnerability data
