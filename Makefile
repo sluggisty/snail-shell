@@ -36,6 +36,14 @@ run:
 run-debug:
 	$(GORUN) ./cmd/snail-shell --debug
 
+# Generate test data
+test-data:
+	$(GORUN) ./cmd/snail-shell --generate-test-data --test-hosts 50
+
+# Generate lots of test data
+test-data-large:
+	$(GORUN) ./cmd/snail-shell --generate-test-data --test-hosts 200
+
 # Clean build artifacts
 clean:
 	rm -rf bin/
@@ -73,6 +81,8 @@ help:
 	@echo "  build      - Build the binary"
 	@echo "  run        - Run the server"
 	@echo "  run-debug  - Run with debug logging"
+	@echo "  test-data  - Generate 50 test hosts"
+	@echo "  test-data-large - Generate 200 test hosts"
 	@echo "  test       - Run tests"
 	@echo "  fmt        - Format code"
 	@echo "  lint       - Lint code"
