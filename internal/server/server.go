@@ -64,6 +64,7 @@ func (s *Server) setupRoutes() {
 
 		// Aggregation endpoints
 		r.Get("/vulnerabilities", h.GetVulnerabilities)
+		r.Get("/vulnerabilities/{cveId}", h.GetCVEDetail)
 		r.Get("/compliance", h.GetCompliance)
 	})
 

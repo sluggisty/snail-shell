@@ -45,6 +45,7 @@ func (h *Handlers) Info(w http.ResponseWriter, r *http.Request) {
 			"hosts":           "GET /api/v1/hosts",
 			"host":            "GET /api/v1/hosts/{hostname}",
 			"vulnerabilities": "GET /api/v1/vulnerabilities",
+			"cve_detail":      "GET /api/v1/vulnerabilities/{cveId}",
 			"compliance":      "GET /api/v1/compliance",
 		},
 	})
@@ -188,6 +189,41 @@ func (h *Handlers) GetVulnerabilities(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(aggregation)
 }
 
+// GetCVEDetail returns detailed information about a specific CVE
+func (h *Handlers) GetCVEDetail(w http.ResponseWriter, r *http.Request) {
+	cveID := chi.URLParam(r, "cveId")
+	if cveID == "" {
+		http.Error(w, `{"error": "missing CVE ID"}`, http.StatusBadRequest)
+		return
+	}
+
+	reports, err := h.storage.GetAllHosts()
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get hosts")
+		http.Error(w, `{"error": "failed to retrieve hosts"}`, http.StatusInternalServerError)
+		return
+	}
+
+	aggregation := h.aggregateVulnerabilities(reports)
+
+	// Find the specific CVE
+	var cveDetail *models.AggregatedCVE
+	for i := range aggregation.CVEs {
+		if aggregation.CVEs[i].CVEID == cveID {
+			cveDetail = &aggregation.CVEs[i]
+			break
+		}
+	}
+
+	if cveDetail == nil {
+		http.Error(w, `{"error": "CVE not found"}`, http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(cveDetail)
+}
+
 func (h *Handlers) aggregateVulnerabilities(reports []*models.Report) *models.VulnerabilitiesAggregation {
 	result := &models.VulnerabilitiesAggregation{
 		TotalHosts:  len(reports),
@@ -206,6 +242,7 @@ func (h *Handlers) aggregateVulnerabilities(reports []*models.Report) *models.Vu
 		}
 
 		hostname := report.Meta.Hostname
+		lastSeen := report.ReceivedAt
 
 		if len(vulnData.Vulnerabilities) > 0 {
 			hostsWithVulns[hostname] = true
@@ -218,15 +255,23 @@ func (h *Handlers) aggregateVulnerabilities(reports []*models.Report) *models.Vu
 			}
 
 			if existing, ok := cveMap[cveID]; ok {
+				// Check if host already exists
 				found := false
-				for _, h := range existing.AffectedHosts {
-					if h == hostname {
+				for i, h := range existing.AffectedHosts {
+					if h.Hostname == hostname {
 						found = true
+						// Update timestamp if this report is newer
+						if h.LastSeen.Before(lastSeen) {
+							existing.AffectedHosts[i].LastSeen = lastSeen
+						}
 						break
 					}
 				}
 				if !found {
-					existing.AffectedHosts = append(existing.AffectedHosts, hostname)
+					existing.AffectedHosts = append(existing.AffectedHosts, models.AffectedHost{
+						Hostname: hostname,
+						LastSeen: lastSeen,
+					})
 					existing.AffectedCount++
 				}
 				if vuln.PackageName != "" {
@@ -247,7 +292,12 @@ func (h *Handlers) aggregateVulnerabilities(reports []*models.Report) *models.Vu
 					PrimaryURL:    vuln.PrimaryURL,
 					FixedVersion:  vuln.FixedVersion,
 					PublishedDate: vuln.PublishedDate,
-					AffectedHosts: []string{hostname},
+					AffectedHosts: []models.AffectedHost{
+						{
+							Hostname: hostname,
+							LastSeen: lastSeen,
+						},
+					},
 					AffectedCount: 1,
 				}
 
@@ -284,6 +334,14 @@ func (h *Handlers) aggregateVulnerabilities(reports []*models.Report) *models.Vu
 		if pkgs, ok := cvePackages[cveID]; ok {
 			for pkg := range pkgs {
 				agg.PackageNames = append(agg.PackageNames, pkg)
+			}
+		}
+		// Sort affected hosts by last seen (most recent first)
+		for i := 0; i < len(agg.AffectedHosts)-1; i++ {
+			for j := i + 1; j < len(agg.AffectedHosts); j++ {
+				if agg.AffectedHosts[i].LastSeen.Before(agg.AffectedHosts[j].LastSeen) {
+					agg.AffectedHosts[i], agg.AffectedHosts[j] = agg.AffectedHosts[j], agg.AffectedHosts[i]
+				}
 			}
 		}
 		cves = append(cves, *agg)
